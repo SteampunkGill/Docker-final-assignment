@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mall.module.order.mapper.OrderMapper">
+
+    <select id="selectProductForUpdate" resultType="com.example.mall.module.product.entity.Product">
+        SELECT * FROM products WHERE id = #{productId} FOR UPDATE
+    </select>
+
+    <update id="decreaseStock">
+        UPDATE products SET stock = stock - #{quantity} WHERE id = #{productId} AND stock >= #{quantity}
+    </update>
+
+</mapper>

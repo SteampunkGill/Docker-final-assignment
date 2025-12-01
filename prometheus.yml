@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'spring-boot-app'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      # 👇 注意：这里也要顺便改成 8081，监控才能抓到数据
+      - targets: ['backend:8081']
