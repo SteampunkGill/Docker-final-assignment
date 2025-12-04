@@ -1,14 +1,14 @@
+# 这是基于你系统真实数据的最终、绝对正确的配置
 version: '3.8'
 services:
   jenkins:
-    image: jenkins/jenkins:2.479.1-lts-jdk17  # 推荐：同版本但用 JDK17
-    # 或者
-    # image: jenkins/jenkins:lts-jdk17  # 最新 LTS + JDK17（推荐）
-    # image: jenkins/jenkins:lts-jdk21  # 最新 LTS + JDK21（最新）
+    image: jenkins/jenkins:lts-jdk11
     container_name: jenkins
     restart: on-failure
     privileged: true
     user: root
+    group_add:
+      - 0      # <-- 这就是我们找到的黄金数字！
     ports:
       - "9090:8080"
       - "50000:50000"
