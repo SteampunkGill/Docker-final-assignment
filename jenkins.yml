@@ -1,4 +1,3 @@
-# 这是基于你系统真实数据的最终、绝对正确的配置
 version: '3.8'
 services:
   jenkins:
@@ -8,13 +7,16 @@ services:
     privileged: true
     user: root
     group_add:
-      - 0      # <-- 这就是我们找到的黄金数字！
+      - 0
     ports:
       - "9090:8080"
       - "50000:50000"
     volumes:
-      - jenkins_data:/var/jenkins_home
+      # 使用你现有的卷名
+      - docker-final-assignment_jenkins_data:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/bin/docker
 volumes:
-  jenkins_data:
+  # 在这里声明你想要使用的外部卷
+  docker-final-assignment_jenkins_data:
+    external: true
