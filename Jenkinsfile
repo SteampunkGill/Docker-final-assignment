@@ -7,24 +7,50 @@ pipeline {
     }
 
     stages {
-        stage('0. 验证项目结构') {
+        stage('0. 详细检查项目结构') {
             steps {
-                echo '检查项目结构...'
+                echo '深度检查项目结构...'
                 sh '''
                     echo "=== Workspace 路径 ==="
                     pwd
                     
                     echo ""
-                    echo "=== backend 目录内容 ==="
-                    ls -la backend/
+                    echo "=== backend/ 内容 ==="
+                    ls -laR backend/ | head -100
                     
                     echo ""
-                    echo "=== 查找 pom.xml ==="
-                    find backend/ -name "pom.xml" -type f
+                    echo "=== backend/backend/ 详细内容 ==="
+                    if [ -d "backend/backend" ]; then
+                        ls -la backend/backend/
+                        
+                        echo ""
+                        echo "=== 检查 pom.xml 是否存在 ==="
+                        if [ -f "backend/backend/pom.xml" ]; then
+                            echo "✅ pom.xml 存在"
+                            echo "文件大小:"
+                            ls -lh backend/backend/pom.xml
+                            echo ""
+                            echo "pom.xml 前10行:"
+                            head -10 backend/backend/pom.xml
+                        else
+                            echo "❌ pom.xml 不存在"
+                        fi
+                        
+                        echo ""
+                        echo "=== 检查 src 目录 ==="
+                        if [ -d "backend/backend/src" ]; then
+                            echo "✅ src 目录存在"
+                            ls -la backend/backend/src/
+                        else
+                            echo "❌ src 目录不存在"
+                        fi
+                    else
+                        echo "❌ backend/backend 目录不存在"
+                    fi
                     
                     echo ""
-                    echo "=== 查找 Dockerfile ==="
-                    find backend/ -name "Dockerfile" -type f
+                    echo "=== 完整的文件树 ==="
+                    find backend/ -type f | head -30
                 '''
             }
         }
@@ -32,27 +58,41 @@ pipeline {
         stage('1. Run Unit Tests') {
             steps {
                 echo '运行单元测试...'
-                // 挂载嵌套的 backend 目录
-                sh '''
-                    docker run --rm \
-                        -v ${WORKSPACE}/backend/backend:/app \
-                        -w /app \
-                        maven:3.9-eclipse-temurin-17 \
-                        mvn test
-                '''
+                script {
+                    // 使用绝对路径
+                    def backendPath = "${WORKSPACE}/backend/backend"
+                    echo "Backend 路径: ${backendPath}"
+                    
+                    sh """
+                        echo "验证路径: ${backendPath}"
+                        ls -la ${backendPath}
+                        
+                        echo ""
+                        echo "开始运行 Maven 测试..."
+                        docker run --rm \
+                            -v ${backendPath}:/app \
+                            -w /app \
+                            maven:3.9-eclipse-temurin-17 \
+                            bash -c "ls -la /app && mvn test"
+                    """
+                }
             }
         }
 
         stage('2. Build & Package') {
             steps {
                 echo '打包 Spring Boot 应用...'
-                sh '''
-                    docker run --rm \
-                        -v ${WORKSPACE}/backend/backend:/app \
-                        -w /app \
-                        maven:3.9-eclipse-temurin-17 \
-                        mvn clean package -DskipTests
-                '''
+                script {
+                    def backendPath = "${WORKSPACE}/backend/backend"
+                    
+                    sh """
+                        docker run --rm \
+                            -v ${backendPath}:/app \
+                            -w /app \
+                            maven:3.9-eclipse-temurin-17 \
+                            bash -c "ls -la /app && mvn clean package -DskipTests"
+                    """
+                }
             }
         }
 
@@ -68,7 +108,7 @@ pipeline {
                         sh """
                             echo ${DOCKERHUB_PASSWORD} | docker login -u ${DOCKERHUB_USER} --password-stdin
                             
-                            # 在 backend 目录下构建镜像
+                            # 在 backend 目录构建
                             cd backend
                             docker build -t ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER} .
                             docker tag ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER} ${BACKEND_IMAGE_NAME}:latest
@@ -95,14 +135,12 @@ pipeline {
 
     post {
         always {
-            echo '清理工作空间...'
-            // 清理 Maven 缓存（可选）
-            sh 'docker system prune -f || true'
+            echo '清理构建缓存...'
+            sh 'docker builder prune -f || true'
         }
         success {
             echo '✅ Pipeline 执行成功！'
-            echo "镜像已推送: ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER}"
-            echo "镜像标签: ${BACKEND_IMAGE_NAME}:latest"
+            echo "镜像: ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER}"
         }
         failure {
             echo '❌ Pipeline 执行失败，请检查日志'
