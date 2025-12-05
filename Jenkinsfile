@@ -83,7 +83,7 @@ pipeline {
                                 
                                 echo 'Waiting for services to start (20 seconds)...' 
                                 sleep(20)
-                                sh 'curl -f http://localhost:8080/actuator/health'
+                                sh 'curl -f http://localhost:8081/actuator/health'
                             } finally {
                                 // finally 块保持不变，用于本次运行后的清理
                                 echo 'Integration tests finished. Tearing down the environment...'
