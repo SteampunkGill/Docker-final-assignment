@@ -10,4 +10,5 @@ services:
       - "9090:9090"
     networks:
       - my-app-network
-    # The 'volumes' key is entirely absent from this definition.
+    # ✅ 明确覆盖 volumes 为空列表，以禁用 prometheus.yml 的挂载
+    volumes: []
