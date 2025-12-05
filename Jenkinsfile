@@ -37,4 +37,41 @@ pipeline {
                         sleep(20)
 
                         echo '执行健康检查...'
-                        sh 'curl -f http://localhost:8080/actuator/health
+                        sh 'curl -f http://localhost:8080/actuator/health'
+
+                    } finally {
+                        echo '集成测试完成，关闭应用环境...'
+                        sh 'docker-compose down'
+                    }
+                }
+            }
+        }
+
+        stage('4. Build & Push Docker Image') {
+            steps {
+                echo "构建并推送 Docker 镜像: ${BACKEND_IMAGE_NAME}"
+                withCredentials([usernamePassword(credentialsId: 'DOCKERHUB_CREDENTIALS', passwordVariable: 'DOCKERHUB_PASSWORD', usernameVariable: 'DOCKERHUB_USERNAME')]) {
+                    sh "docker login -u ${DOCKERHUB_USERNAME} -p ${DOCKERHUB_PASSWORD}"
+                    sh "docker build -t ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER} -f backend/Dockerfile ."
+                    sh "docker tag ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER} ${BACKEND_IMAGE_NAME}:latest"
+                    sh "docker push ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER}"
+                    sh "docker push ${BACKEND_IMAGE_NAME}:latest"
+                }
+            }
+        }
+
+        stage('5. Cleanup') {
+            steps {
+                echo '清理工作...'
+                sh 'docker logout'
+            }
+        }
+    }
+
+    post {
+        always {
+            echo '收集测试报告...'
+            junit 'backend/backend/target/surefire-reports/*.xml'
+        }
+    }
+}
