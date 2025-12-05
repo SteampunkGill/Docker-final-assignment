@@ -1,6 +1,11 @@
 pipeline {
     agent any
 
+    // ✅ 关键修改 #1: 声明需要使用 Jenkins 全局工具中配置的 docker-compose
+    tools {
+        org.jenkinsci.plugins.docker.compose.DockerComposeTool 'docker-compose-latest' // 确保这里的名字和你 Jenkins UI 配置的一致
+    }
+
     environment {
         DOCKERHUB_USERNAME = 'steampunkgill'
         BACKEND_IMAGE_NAME = "${DOCKERHUB_USERNAME}/docker-ecommerce-backend"
@@ -14,12 +19,11 @@ pipeline {
             }
         }
 
-        // ✅ 关键修改：添加 reuseNode true
         stage('2. Run Unit Tests') {
             agent {
                 docker { 
                     image 'maven:3.9-eclipse-temurin-17'
-                    reuseNode true  // 👈 复用同一个工作区，避免路径问题
+                    reuseNode true
                 }
             }
             steps {
@@ -30,12 +34,11 @@ pipeline {
             }
         }
 
-        // ✅ 同样添加 reuseNode true
         stage('3. Build & Package') {
             agent {
                 docker { 
                     image 'maven:3.9-eclipse-temurin-17'
-                    reuseNode true  // 👈 复用同一个工作区
+                    reuseNode true
                 }
             }
             steps {
@@ -51,6 +54,7 @@ pipeline {
                 script {
                     try {
                         echo '启动完整的应用环境进行集成测试...'
+                        // 现在这个命令可以在 agent 上被正确找到了
                         sh 'docker-compose up -d'
                         
                         echo '等待服务启动 (等待20秒)...' 
@@ -95,7 +99,7 @@ pipeline {
     post {
         always {
             echo '收集测试报告...'
-            // ✅ 修复：使用 allowEmptyResults，避免没有测试文件时报错
+            // ✅ 关键修改 #2: (你已经做对了) 允许没有测试报告文件
             junit allowEmptyResults: true, testResults: 'backend/backend/target/surefire-reports/*.xml'
         }
     }
