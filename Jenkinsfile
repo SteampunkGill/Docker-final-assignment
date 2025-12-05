@@ -2,11 +2,10 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_USERNAME = 'steampunkgill'
+        DOCKOCKERHUB_USERNAME = 'steampunkgill'
         BACKEND_IMAGE_NAME = "${DOCKERHUB_USERNAME}/docker-ecommerce-backend"
         DOCKER_COMPOSE_PATH = "${env.WORKSPACE}/bin"
-        // ✅ 定义 compose 命令，方便复用
-        COMPOSE_CMD = "docker-compose -f docker-compose.yml -f docker-compose.ci.yml"
+        // 我们不再需要任何覆盖文件或复杂的命令
     }
 
     stages {
@@ -43,9 +42,10 @@ pipeline {
 
                 stage('3. Run Unit Tests') {
                     agent {
-                        docker {
+                        docker { 
                             image 'maven:3.9-eclipse-temurin-17'
                             reuseNode true
+                            args "-v ${env.WORKSPACE}/settings.xml:/root/.m2/settings.xml"
                         }
                     }
                     steps {
@@ -57,9 +57,10 @@ pipeline {
 
                 stage('4. Build & Package') {
                     agent {
-                        docker {
+                        docker { 
                             image 'maven:3.9-eclipse-temurin-17'
                             reuseNode true
+                            args "-v ${env.WORKSPACE}/settings.xml:/root/.m2/settings.xml"
                         }
                     }
                     steps {
@@ -70,44 +71,38 @@ pipeline {
                 }
 
                 // =====================================================================
-                // STAGE 5: 增加了打印文件内容的最终调试步骤
+                // STAGE 5: 采用动态生成配置文件的终极方案
                 // =====================================================================
                 stage('5. Integration Tests') {
                     steps {
                         script {
                             try {
-                                echo 'Ensuring a clean environment...'
-                                // ✅ 使用新的 compose 命令
-                                sh "${COMPOSE_CMD} down --remove-orphans"
+                                // ✅ 终极修复: 使用 sed 命令从原始文件中删除掉包含 "prometheus.yml" 的那一行，
+                                // 然后将结果保存到一个全新的、干净的配置文件中。
+                                echo 'Generating a CI-safe docker-compose file by removing the problematic volume mount...'
+                                sh "sed '/prometheus.yml/d' docker-compose.yml > docker-compose.generated.yml"
 
-                                // ✅ 最终调试步骤: 打印两个 compose 文件的内容以供检查
-                                echo '------------------------------------------------------------'
-                                echo '---               Content of docker-compose.yml          ---'
-                                echo '------------------------------------------------------------'
-                                sh 'cat docker-compose.yml'
+                                // 打印生成的文件内容，作为最终验证
+                                echo '--- Content of the dynamically generated docker-compose.generated.yml ---'
+                                sh 'cat docker-compose.generated.yml'
+                                echo '-------------------------------------------------------------------------'
 
-                                echo '------------------------------------------------------------'
-                                echo '---             Content of docker-compose.ci.yml         ---'
-                                echo '------------------------------------------------------------'
-                                sh 'cat docker-compose.ci.yml'
-                                echo '------------------------------------------------------------'
+                                // 让所有命令都只使用这个新生成的、绝对安全的文件
+                                echo 'Ensuring a clean environment using the generated file...'
+                                sh "docker-compose -f docker-compose.generated.yml down --remove-orphans"
 
-
-                                echo 'Starting the application environment for integration tests...'
-                                // ✅ 使用新的 compose 命令
-                                sh "${COMPOSE_CMD} up -d"
-
-                                echo 'Waiting for services to start (20 seconds)...'
+                                echo 'Starting the application environment using the generated file...'
+                                sh "docker-compose -f docker-compose.generated.yml up -d"
+                                
+                                echo 'Waiting for services to start (20 seconds)...' 
                                 sleep(20)
-
-                                // ✅ 修复端口为 8081
                                 echo 'Performing health check on port 8081...'
                                 sh 'curl -f http://localhost:8081/actuator/health'
 
                             } finally {
                                 echo 'Integration tests finished. Tearing down the environment...'
-                                // ✅ 清理时也必须使用同一个 compose 命令
-                                sh "${COMPOSE_CMD} down"
+                                // 清理时也必须使用同一个生成的文件
+                                sh "docker-compose -f docker-compose.generated.yml down"
                             }
                         }
                     }
@@ -116,8 +111,8 @@ pipeline {
                 stage('6. Build & Push Docker Image') {
                     steps {
                         withCredentials([usernamePassword(
-                            credentialsId: 'DOCKERHUB_CREDENTIALS',
-                            passwordVariable: 'DOCKERHUB_PASSWORD',
+                            credentialsId: 'DOCKERHUB_CREDENTIALS', 
+                            passwordVariable: 'DOCKERHUB_PASSWORD', 
                             usernameVariable: 'DOCKERHUB_USERNAME'
                         )]) {
                             sh "docker login -u ${DOCKERHUB_USERNAME} -p ${DOCKERHUB_PASSWORD}"
