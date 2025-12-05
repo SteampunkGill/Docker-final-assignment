@@ -41,7 +41,7 @@ pipeline {
 
                 stage('3. Run Unit Tests') {
                     agent {
-                        docker { 
+                        docker {
                             image 'maven:3.9-eclipse-temurin-17'
                             reuseNode true
                         }
@@ -69,7 +69,7 @@ pipeline {
 
                 stage('4. Build & Package') {
                     agent {
-                        docker { 
+                        docker {
                             image 'maven:3.9-eclipse-temurin-17'
                             reuseNode true
                         }
@@ -82,16 +82,27 @@ pipeline {
                 }
 
                 // =====================================================================
-                // STAGE 5: 采用修正后的 sed 命令的终极方案
+                // STAGE 5: 增加了强制清理端口的终极方案
                 // =====================================================================
                 stage('5. Integration Tests') {
                     steps {
                         script {
                             try {
-                                // ✅ 终极修复: 使用一个健壮的 sed 命令，找到 prometheus 服务块，
-                                // 并删除从 'volumes:' 到包含 'prometheus.yml' 的整个块。
+                                // ✅ 终极修复: 在所有操作之前，强制删除可能占用端口的旧容器
+                                echo 'Force removing any lingering prometheus container to free up port 9090...'
+                                sh 'docker rm -f prometheus || true'
+
                                 echo 'Generating a CI-safe docker-compose file by REMOVING the prometheus volume block...'
+                                // 修正后的 sed 命令：
+                                // 1. 找到以 'prometheus:' 开头的行。
+                                // 2. 匹配到以 'networks:' 开头的行（这是 Prometheus 服务的结束）。
+                                // 3. 在这个范围内，找到以 'volumes:' 开头的行。
+                                // 4. 匹配到包含 'prometheus.yml' 的行（这是 Prometheus 卷的结束）。
+                                // 5. 删除从 'volumes:' 到包含 'prometheus.yml' 的整个块。
+                                // 注意：如果 docker-compose.yml 结构复杂，可能需要更精确的 sed 表达式。
+                                // 这里假设 prometheus 服务的 volumes 块是独立的，并且以 prometheus.yml 结束。
                                 sh "sed '/prometheus:/,/networks:/ { /volumes:/,/prometheus.yml/d }' docker-compose.yml > docker-compose.generated.yml"
+
 
                                 // 打印生成的文件内容，作为最终验证
                                 echo '--- Content of the dynamically generated docker-compose.generated.yml ---'
@@ -104,8 +115,8 @@ pipeline {
 
                                 echo 'Starting the application environment using the generated file...'
                                 sh "docker-compose -f docker-compose.generated.yml up -d"
-                                
-                                echo 'Waiting for services to start (20 seconds)...' 
+
+                                echo 'Waiting for services to start (20 seconds)...'
                                 sleep(20)
                                 echo 'Performing health check on port 8081...'
                                 sh 'curl -f http://localhost:8081/actuator/health'
@@ -121,8 +132,8 @@ pipeline {
                 stage('6. Build & Push Docker Image') {
                     steps {
                         withCredentials([usernamePassword(
-                            credentialsId: 'DOCKERHUB_CREDENTIALS', 
-                            passwordVariable: 'DOCKERHUB_PASSWORD', 
+                            credentialsId: 'DOCKERHUB_CREDENTIALS',
+                            passwordVariable: 'DOCKERHUB_PASSWORD',
                             usernameVariable: 'DOCKERHUB_USERNAME'
                         )]) {
                             sh "docker login -u ${DOCKERHUB_USERNAME} -p ${DOCKERHUB_PASSWORD}"
