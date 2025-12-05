@@ -81,6 +81,9 @@ pipeline {
                     }
                 }
 
+                // =====================================================================
+                // STAGE 5: 采用“主动轮询健康检查”的终极方案
+                // =====================================================================
                 stage('5. Integration Tests') {
                     steps {
                         script {
@@ -93,16 +96,31 @@ pipeline {
 
                                 echo 'Generating a CI-safe docker-compose file...'
                                 sh "sed '/prometheus:/,/networks:/ { /volumes:/,/prometheus.yml/d }' docker-compose.yml | sed 's/\"9090:9090\"/\"9091:9090\"/' > docker-compose.generated.yml"
-                                
+
                                 echo 'Starting the application environment using the generated file...'
                                 sh "docker-compose -f docker-compose.generated.yml up -d"
                                 
-                                echo 'Waiting for services to start (20 seconds)...' 
-                                sleep(20)
-
-                                // ✅ 终极修复: 直接使用确定的网络名称，不再动态查找，不依赖 jq
-                                echo 'Performing health check from within the application network...'
-                                sh 'docker run --network=docker-ecommerce-pipeline_my-app-network --rm curlimages/curl -f --retry 10 --retry-delay 5 http://backend:8081/actuator/health'
+                                // ✅ 终极修复: 使用一个健壮的 while 循环来等待服务完全就绪
+                                echo 'Waiting for the backend service to become healthy...'
+                                sh '''
+                                    set +x
+                                    echo "Pinging http://backend:8081/actuator/health ..."
+                                    
+                                    timeout=90
+                                    while [[ "$(docker run --network=docker-ecommerce-pipeline_my-app-network --rm curlimages/curl -s -o /dev/null -w ''%{http_code}'' http://backend:8081/actuator/health)" != "200" ]]; do
+                                        if [[ $timeout -eq 0 ]]; then
+                                            echo "Timeout: Backend service did not become healthy in 90 seconds."
+                                            exit 1
+                                        fi
+                                        
+                                        echo -n "."
+                                        sleep 5
+                                        timeout=$((timeout - 5))
+                                    done
+                                    
+                                    echo -e "\\nBackend service is healthy!"
+                                    set -x
+                                '''
 
                             } finally {
                                 echo 'Tearing down the environment...'
