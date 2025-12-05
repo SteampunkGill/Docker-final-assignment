@@ -1,4 +1,4 @@
-p// ==========================================================
+// ==========================================================
 //                 这是最终、正确的 Jenkinsfile
 // ==========================================================
 pipeline {
@@ -13,7 +13,7 @@ pipeline {
         stage('1. Run Unit Tests') {
             steps {
                 echo '运行单元测试...'
-                // --- 修改点 1: 在容器内先进入 backend 子目录，再执行 mvn 命令 ---
+                // --- 修正点 1: 在容器内先进入 backend 子目录，再执行 mvn 命令 ---
                 sh 'docker run --rm -v ${WORKSPACE}/backend:/app -w /app maven:3.9-eclipse-temurin-17 sh -c "cd backend && mvn test"'
             }
         }
@@ -21,7 +21,7 @@ pipeline {
         stage('2. Build & Package') {
             steps {
                 echo '打包 Spring Boot 应用...'
-                // --- 修改点 2: 打包时也一样，先进入 backend 子目录 ---
+                // --- 修正点 2: 打包时也一样，先进入 backend 子目录 ---
                 sh 'docker run --rm -v ${WORKSPACE}/backend:/app -w /app maven:3.9-eclipse-temurin-17 sh -c "cd backend && mvn package -DskipTests"'
             }
         }
@@ -71,7 +71,7 @@ pipeline {
     post {
         always {
             echo '收集测试报告...'
-            // --- 修改点 3: 报告的路径也需要指向正确的 backend 子目录 ---
+            // --- 修正点 3: 报告的路径也需要指向正确的 backend 子目录 ---
             junit 'backend/backend/target/surefire-reports/*.xml'
         }
     }
