@@ -87,10 +87,23 @@ pipeline {
                     }
                 }
 
+                // =====================================================================
+                // STAGE 5: 增加了“终极清理”步骤
+                // =====================================================================
                 stage('5. Integration Tests') {
                     steps {
                         script {
                             try {
+                                // ✅ 终极修复: 在所有操作之前，强制清理所有可能被占用的端口
+                                echo '--- Force cleaning up all ports for a truly resilient environment ---'
+                                // 使用 docker ps -q --filter "publish=PORT" 来查找绑定到特定端口的容器
+                                // xargs -r docker rm -f 会将找到的容器ID传递给 docker rm -f
+                                // || true 确保即使没有找到容器，命令也不会失败
+                                sh 'docker ps -q --filter "publish=8081" | xargs -r docker rm -f || true' // For backend
+                                sh 'docker ps -q --filter "publish=80"   | xargs -r docker rm -f || true' // For frontend
+                                sh 'docker ps -q --filter "publish=3307" | xargs -r docker rm -f || true' // For database
+                                sh 'docker ps -q --filter "publish=9091" | xargs -r docker rm -f || true' // For remapped prometheus
+
                                 // 终极修复方案: 动态生成一个 CI 专用的、安全的配置文件
                                 // 1. 删除 prometheus 的 volumes 块，解决 Docker-in-Docker 路径问题
                                 // 2. 将 prometheus 的端口从 9090 改为 9091，解决与 Jenkins 的端口冲突
