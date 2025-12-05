@@ -59,6 +59,54 @@ pipeline {
                             reuseNode true
                         }
                     }
+                    steps {pipeline {
+    agent any
+
+    environment {
+        DOCKERHUB_USERNAME = 'steampunkgill'
+        BACKEND_IMAGE_NAME = "${DOCKERHUB_USERNAME}/docker-ecommerce-backend"
+        DOCKER_COMPOSE_PATH = "${env.WORKSPACE}/bin"
+    }
+
+    stages {
+        stage('1. Setup Environment') {
+            steps {
+                script {
+                    echo "Checking and preparing docker-compose for Linux..."
+                    sh '''
+                        if [ ! -f "${DOCKER_COMPOSE_PATH}/docker-compose" ]; then
+                            echo "docker-compose not found, downloading..."
+                            mkdir -p "${DOCKER_COMPOSE_PATH}"
+                            curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o "${DOCKER_COMPOSE_PATH}/docker-compose"
+                            chmod +x "${DOCKER_COMPOSE_PATH}/docker-compose"
+                        else
+                            echo "docker-compose already exists."
+                        fi
+                    '''
+                    echo "Verifying docker-compose version..."
+                    sh "'${DOCKER_COMPOSE_PATH}/docker-compose' --version"
+                }
+            }
+        }
+
+        stage('Build, Test & Push') {
+            environment {
+                PATH = "${DOCKER_COMPOSE_PATH}:${env.PATH}"
+            }
+            stages {
+                stage('2. Checkout Code') {
+                    steps {
+                        checkout scm
+                    }
+                }
+
+                stage('3. Run Unit Tests') {
+                    agent {
+                        docker { 
+                            image 'maven:3.9-eclipse-temurin-17'
+                            reuseNode true
+                        }
+                    }
                     steps {
                         dir('backend/backend') {
                             sh 'mvn test'
@@ -80,16 +128,26 @@ pipeline {
                     }
                 }
 
-                // 这些 Stage 在 Linux agent 上运行，使用 sh 是正确的
+                // =====================================================================
+                // STAGE 5: 已修复的 Integration Tests Stage
+                // =====================================================================
                 stage('5. Integration Tests') {
                     steps {
                         script {
                             try {
+                                // ✅ 关键修复: 在启动前，先执行 down 命令清理任何残留的容器，确保环境干净
+                                echo 'Ensuring a clean environment by running docker-compose down...'
+                                sh 'docker-compose down --remove-orphans' // --remove-orphans 是一个好习惯
+
+                                echo 'Starting the application environment for integration tests...'
                                 sh 'docker-compose up -d'
+                                
                                 echo 'Waiting for services to start (20 seconds)...' 
                                 sleep(20)
                                 sh 'curl -f http://localhost:8080/actuator/health'
                             } finally {
+                                // finally 块保持不变，用于本次运行后的清理
+                                echo 'Integration tests finished. Tearing down the environment...'
                                 sh 'docker-compose down'
                             }
                         }
