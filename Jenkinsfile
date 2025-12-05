@@ -63,6 +63,8 @@ pipeline {
 
     post {
         always {
+            echo '收集测试报告...'
+            junit 'backend/target/surefire-reports/*.xml'
             node('') {
                 sh 'docker builder prune -f || true'
             }
