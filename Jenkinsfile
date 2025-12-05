@@ -88,7 +88,7 @@ pipeline {
                 }
 
                 // =====================================================================
-                // STAGE 5: 增加了“终极清理”步骤
+                // STAGE 5: 采用“从内部网络测试”的终极方案
                 // =====================================================================
                 stage('5. Integration Tests') {
                     steps {
@@ -123,8 +123,14 @@ pipeline {
                                 
                                 echo 'Waiting for services to start (20 seconds)...' 
                                 sleep(20)
-                                echo 'Performing health check on port 8081...'
-                                sh 'curl -f http://localhost:8081/actuator/health'
+
+                                // ✅ 终极修复: 启动一个临时容器，连接到应用网络，并从内部执行健康检查
+                                echo 'Performing health check from within the application network...'
+                                // 注意：这里假设您的 docker-compose.yml 中定义了一个名为 'my-app-network' 的网络
+                                // 如果您的网络名称不同，请根据实际情况修改 `--network` 参数。
+                                // 通常 docker-compose 会创建一个以项目目录名_网络名 命名的网络，例如 `docker-ecommerce-pipeline_default` 或 `docker-ecommerce-pipeline_my-app-network`
+                                // 您可以通过 `docker network ls` 或 `docker-compose -f docker-compose.generated.yml ps` 来确认实际的网络名称。
+                                sh 'docker run --network=$(docker-compose -f docker-compose.generated.yml config --services | head -n 1 | xargs docker inspect --format "{{json .NetworkSettings.Networks}}" | jq -r "keys[0]") --rm curlimages/curl -f --retry 10 --retry-delay 5 http://backend:8081/actuator/health'
 
                             } finally {
                                 echo 'Tearing down the environment...'
