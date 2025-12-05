@@ -2,10 +2,9 @@ pipeline {
     agent any
 
     environment {
-        DOCKOCKERHUB_USERNAME = 'steampunkgill'
+        DOCKERHUB_USERNAME = 'steampunkgill'
         BACKEND_IMAGE_NAME = "${DOCKERHUB_USERNAME}/docker-ecommerce-backend"
         DOCKER_COMPOSE_PATH = "${env.WORKSPACE}/bin"
-        // 我们不再需要任何覆盖文件或复杂的命令
     }
 
     stages {
@@ -40,17 +39,22 @@ pipeline {
                     }
                 }
 
+                // =====================================================================
+                // STAGE 3 & 4: 采用 Maven -s 参数的终极修复
+                // =====================================================================
                 stage('3. Run Unit Tests') {
                     agent {
                         docker { 
                             image 'maven:3.9-eclipse-temurin-17'
                             reuseNode true
-                            args "-v ${env.WORKSPACE}/settings.xml:/root/.m2/settings.xml"
+                            // ✅ 终极修复: 彻底删除有问题的 args -v 挂载
                         }
                     }
                     steps {
                         dir('backend/backend') {
-                            sh 'mvn test'
+                            // ✅ 终极修复: 使用 -s 参数告诉 Maven 配置文件的位置
+                            // 从 backend/backend 目录出发，settings.xml 在两级目录之上
+                            sh 'mvn -s ../../settings.xml test'
                         }
                     }
                 }
@@ -60,48 +64,34 @@ pipeline {
                         docker { 
                             image 'maven:3.9-eclipse-temurin-17'
                             reuseNode true
-                            args "-v ${env.WORKSPACE}/settings.xml:/root/.m2/settings.xml"
+                            // ✅ 终极修复: 彻底删除有问题的 args -v 挂载
                         }
                     }
                     steps {
                         dir('backend/backend') {
-                            sh 'mvn package -DskipTests'
+                            // ✅ 终极修复: 同样为打包阶段指定配置文件
+                            sh 'mvn -s ../../settings.xml package -DskipTests'
                         }
                     }
                 }
 
-                // =====================================================================
-                // STAGE 5: 采用动态生成配置文件的终极方案
-                // =====================================================================
+                // Stage 5 已经使用了动态生成文件的终极方案，保持不变
                 stage('5. Integration Tests') {
                     steps {
                         script {
                             try {
-                                // ✅ 终极修复: 使用 sed 命令从原始文件中删除掉包含 "prometheus.yml" 的那一行，
-                                // 然后将结果保存到一个全新的、干净的配置文件中。
-                                echo 'Generating a CI-safe docker-compose file by removing the problematic volume mount...'
+                                echo 'Generating a CI-safe docker-compose file...'
                                 sh "sed '/prometheus.yml/d' docker-compose.yml > docker-compose.generated.yml"
-
-                                // 打印生成的文件内容，作为最终验证
-                                echo '--- Content of the dynamically generated docker-compose.generated.yml ---'
-                                sh 'cat docker-compose.generated.yml'
-                                echo '-------------------------------------------------------------------------'
-
-                                // 让所有命令都只使用这个新生成的、绝对安全的文件
-                                echo 'Ensuring a clean environment using the generated file...'
+                                echo 'Ensuring a clean environment...'
                                 sh "docker-compose -f docker-compose.generated.yml down --remove-orphans"
-
-                                echo 'Starting the application environment using the generated file...'
+                                echo 'Starting the application environment...'
                                 sh "docker-compose -f docker-compose.generated.yml up -d"
-                                
                                 echo 'Waiting for services to start (20 seconds)...' 
                                 sleep(20)
                                 echo 'Performing health check on port 8081...'
                                 sh 'curl -f http://localhost:8081/actuator/health'
-
                             } finally {
-                                echo 'Integration tests finished. Tearing down the environment...'
-                                // 清理时也必须使用同一个生成的文件
+                                echo 'Tearing down the environment...'
                                 sh "docker-compose -f docker-compose.generated.yml down"
                             }
                         }
