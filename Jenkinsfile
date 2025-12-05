@@ -69,6 +69,9 @@ pipeline {
                     }
                 }
 
+                // =====================================================================
+                // STAGE 5: 增加了打印文件内容的最终调试步骤
+                // =====================================================================
                 stage('5. Integration Tests') {
                     steps {
                         script {
@@ -76,6 +79,19 @@ pipeline {
                                 echo 'Ensuring a clean environment...'
                                 // ✅ 使用新的 compose 命令
                                 sh "${COMPOSE_CMD} down --remove-orphans"
+
+                                // ✅ 最终调试步骤: 打印两个 compose 文件的内容以供检查
+                                echo '------------------------------------------------------------'
+                                echo '---               Content of docker-compose.yml          ---'
+                                echo '------------------------------------------------------------'
+                                sh 'cat docker-compose.yml'
+                                
+                                echo '------------------------------------------------------------'
+                                echo '---             Content of docker-compose.ci.yml         ---'
+                                echo '------------------------------------------------------------'
+                                sh 'cat docker-compose.ci.yml'
+                                echo '------------------------------------------------------------'
+
 
                                 echo 'Starting the application environment for integration tests...'
                                 // ✅ 使用新的 compose 命令
