@@ -5,6 +5,8 @@ pipeline {
         DOCKERHUB_USERNAME = 'steampunkgill'
         BACKEND_IMAGE_NAME = "${DOCKERHUB_USERNAME}/docker-ecommerce-backend"
         DOCKER_COMPOSE_PATH = "${env.WORKSPACE}/bin"
+        // ✅ 定义 compose 命令，方便复用
+        COMPOSE_CMD = "docker-compose -f docker-compose.yml -f docker-compose.ci.yml"
     }
 
     stages {
@@ -67,27 +69,29 @@ pipeline {
                     }
                 }
 
-                // =====================================================================
-                // STAGE 5: 已修复的 Integration Tests Stage
-                // =====================================================================
                 stage('5. Integration Tests') {
                     steps {
                         script {
                             try {
-                                // ✅ 关键修复: 在启动前，先执行 down 命令清理任何残留的容器，确保环境干净
-                                echo 'Ensuring a clean environment by running docker-compose down...'
-                                sh 'docker-compose down --remove-orphans' // --remove-orphans 是一个好习惯
+                                echo 'Ensuring a clean environment...'
+                                // ✅ 使用新的 compose 命令
+                                sh "${COMPOSE_CMD} down --remove-orphans"
 
                                 echo 'Starting the application environment for integration tests...'
-                                sh 'docker-compose up -d'
+                                // ✅ 使用新的 compose 命令
+                                sh "${COMPOSE_CMD} up -d"
                                 
                                 echo 'Waiting for services to start (20 seconds)...' 
                                 sleep(20)
+
+                                // ✅ 修复端口为 8081
+                                echo 'Performing health check on port 8081...'
                                 sh 'curl -f http://localhost:8081/actuator/health'
+
                             } finally {
-                                // finally 块保持不变，用于本次运行后的清理
                                 echo 'Integration tests finished. Tearing down the environment...'
-                                sh 'docker-compose down'
+                                // ✅ 使用新的 compose 命令
+                                sh "${COMPOSE_CMD} down"
                             }
                         }
                     }
