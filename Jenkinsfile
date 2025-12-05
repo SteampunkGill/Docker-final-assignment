@@ -30,6 +30,7 @@ pipeline {
 
         stage('Build, Test & Push') {
             environment {
+                // 将 docker-compose 的路径添加到 PATH 中，使其可以直接被调用
                 PATH = "${DOCKER_COMPOSE_PATH}:${env.PATH}"
             }
             stages {
@@ -126,11 +127,15 @@ pipeline {
 
                                 // ✅ 终极修复: 启动一个临时容器，连接到应用网络，并从内部执行健康检查
                                 echo 'Performing health check from within the application network...'
-                                // 注意：这里假设您的 docker-compose.yml 中定义了一个名为 'my-app-network' 的网络
-                                // 如果您的网络名称不同，请根据实际情况修改 `--network` 参数。
-                                // 通常 docker-compose 会创建一个以项目目录名_网络名 命名的网络，例如 `docker-ecommerce-pipeline_default` 或 `docker-ecommerce-pipeline_my-app-network`
-                                // 您可以通过 `docker network ls` 或 `docker-compose -f docker-compose.generated.yml ps` 来确认实际的网络名称。
-                                sh 'docker run --network=$(docker-compose -f docker-compose.generated.yml config --services | head -n 1 | xargs docker inspect --format "{{json .NetworkSettings.Networks}}" | jq -r "keys[0]") --rm curlimages/curl -f --retry 10 --retry-delay 5 http://backend:8081/actuator/health'
+                                // 动态获取 docker-compose 创建的网络名称
+                                // 1. `docker-compose -f docker-compose.generated.yml config --services | head -n 1`：获取第一个服务的名称（例如 'backend'）
+                                // 2. `xargs docker inspect --format "{{json .NetworkSettings.Networks}}"`：检查该服务的网络设置并输出 JSON
+                                // 3. `jq -r "keys[0]"`：使用 jq 解析 JSON，提取第一个网络的名称
+                                def networkName = sh(returnStdout: true, script: 'docker-compose -f docker-compose.generated.yml config --services | head -n 1 | xargs docker inspect --format "{{json .NetworkSettings.Networks}}" | jq -r "keys[0]"').trim()
+                                echo "Detected application network name: ${networkName}"
+
+                                // 使用动态获取的网络名称执行健康检查
+                                sh "docker run --network=${networkName} --rm curlimages/curl -f --retry 10 --retry-delay 5 http://backend:8081/actuator/health"
 
                             } finally {
                                 echo 'Tearing down the environment...'
