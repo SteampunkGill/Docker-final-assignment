@@ -1,0 +1,14 @@
+# docker-compose.ci.yml
+# This file overrides the base docker-compose.yml for the CI environment.
+
+services:
+  prometheus:
+    # We redefine the prometheus service but OMIT the 'volumes' section.
+    # This will make it start with its default internal configuration,
+    # avoiding the host-path mounting problem in the CI environment.
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - my-app-network
