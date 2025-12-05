@@ -4,39 +4,38 @@ pipeline {
     environment {
         DOCKERHUB_USERNAME = 'steampunkgill'
         BACKEND_IMAGE_NAME = "${DOCKERHUB_USERNAME}/docker-ecommerce-backend"
-        // Jenkins 会自动处理路径分隔符，所以 '/' 通常也能工作，但定义为 bin 没问题
-        DOCKER_COMPOSE_PATH = "${env.WORKSPACE}\\bin"
+        // 使用正斜杠是更安全的做法，Jenkins 会在 agent 上将其正确转换为 Windows 路径
+        DOCKER_COMPOSE_PATH = "${env.WORKSPACE}/bin"
     }
 
     stages {
-        // =====================================================================
-        // STAGE 1: 为 Windows 环境重写的 Setup Stage
-        // =====================================================================
         stage('1. Setup Environment') {
             steps {
                 script {
-                    echo "检查并准备 docker-compose for Windows..."
+                    echo "Checking and preparing docker-compose for Windows..."
                     
-                    // 使用 bat 步骤和 Windows 的 `if not exist` 语法
-                    bat "if not exist \\"%DOCKER_COMPOSE_PATH%\\docker-compose.exe\\" (" +
-                        "echo docker-compose.exe not found, downloading... && " +
-                        "mkdir %DOCKER_COMPOSE_PATH% && " +
-                        // 下载 Windows 版本的 docker-compose.exe
-                        "curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-windows-x86_64.exe -o %DOCKER_COMPOSE_PATH%\\docker-compose.exe" +
-                    ") else (" +
-                        "echo docker-compose.exe already exists." +
-                    ")"
+                    // ✅ 关键修复: 使用三个单引号 (''') 来包裹整个 bat 命令块
+                    // 这可以防止 Groovy 错误地解析反斜杠 '\'
+                    bat '''
+                        if not exist "%DOCKER_COMPOSE_PATH%\\docker-compose.exe" (
+                            echo docker-compose.exe not found, downloading...
+                            mkdir "%DOCKER_COMPOSE_PATH%"
+                            curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-windows-x86_64.exe -o "%DOCKER_COMPOSE_PATH%\\docker-compose.exe"
+                        ) else (
+                            echo docker-compose.exe already exists.
+                        )
+                    '''
                     
-                    echo "验证 docker-compose 版本..."
-                    // 使用 bat 步骤执行 .exe 文件
-                    bat "\\"%DOCKER_COMPOSE_PATH%\\docker-compose.exe\\" --version"
+                    echo "Verifying docker-compose version..."
+                    // 单行命令也可以用单引号 ''
+                    bat '"%DOCKER_COMPOSE_PATH%\\docker-compose.exe" --version'
                 }
             }
         }
 
         stage('Build, Test & Push') {
             environment {
-                // ✅ 关键修改: 使用分号 ; 作为 Windows 的 PATH 分隔符
+                // 使用分号 ; 作为 Windows 的 PATH 分隔符
                 PATH = "${DOCKER_COMPOSE_PATH};${env.PATH}"
             }
             stages {
@@ -47,6 +46,7 @@ pipeline {
                     }
                 }
 
+                // 这个 stage 在 Docker 容器内运行，所以必须用 sh
                 stage('3. Run Unit Tests') {
                     agent {
                         docker { 
@@ -57,12 +57,12 @@ pipeline {
                     steps {
                         echo '运行单元测试...'
                         dir('backend/backend') {
-                            // 'mvn' 命令通常是跨平台的
                             sh 'mvn test'
                         }
                     }
                 }
 
+                // 这个 stage 在 Docker 容器内运行，所以必须用 sh
                 stage('4. Build & Package') {
                     agent {
                         docker { 
@@ -83,18 +83,18 @@ pipeline {
                         script {
                             try {
                                 echo '启动完整的应用环境进行集成测试...'
-                                // 'docker-compose' 现在可以在 PATH 中被找到
-                                sh 'docker-compose up -d'
+                                // ✅ 关键修复: 在 Windows agent 上使用 bat
+                                bat 'docker-compose up -d'
                                 
                                 echo '等待服务启动 (等待20秒)...' 
                                 sleep(20)
 
                                 echo '执行健康检查...'
-                                sh 'curl -f http://localhost:8080/actuator/health'
+                                bat 'curl -f http://localhost:8080/actuator/health'
 
                             } finally {
                                 echo '集成测试完成，关闭应用环境...'
-                                sh 'docker-compose down'
+                                bat 'docker-compose down'
                             }
                         }
                     }
@@ -108,12 +108,12 @@ pipeline {
                             passwordVariable: 'DOCKERHUB_PASSWORD', 
                             usernameVariable: 'DOCKERHUB_USERNAME'
                         )]) {
-                            // 'docker' 命令通常是跨平台的
-                            sh "docker login -u ${DOCKERHUB_USERNAME} -p ${DOCKERHUB_PASSWORD}"
-                            sh "docker build -t ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER} -f backend/Dockerfile backend"
-                            sh "docker tag ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER} ${BACKEND_IMAGE_NAME}:latest"
-                            sh "docker push ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER}"
-                            sh "docker push ${BACKEND_IMAGE_NAME}:latest"
+                            // ✅ 关键修复: 在 Windows agent 上使用 bat
+                            bat "docker login -u ${DOCKERHUB_USERNAME} -p ${DOCKERHUB_PASSWORD}"
+                            bat "docker build -t ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER} -f backend/Dockerfile backend"
+                            bat "docker tag ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER} ${BACKEND_IMAGE_NAME}:latest"
+                            bat "docker push ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER}"
+                            bat "docker push ${BACKEND_IMAGE_NAME}:latest"
                         }
                     }
                 }
@@ -121,7 +121,8 @@ pipeline {
                 stage('7. Cleanup') {
                     steps {
                         echo '清理工作...'
-                        sh 'docker logout'
+                        // ✅ 关键修复: 在 Windows agent 上使用 bat
+                        bat 'docker logout'
                     }
                 }
             }
