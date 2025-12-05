@@ -89,20 +89,18 @@ pipeline {
                         script {
                             try {
                                 // ✅ 终极修复: 在所有操作之前，强制删除可能占用端口的旧容器
-                                echo 'Force removing any lingering prometheus container to free up port 9090...'
-                                sh 'docker rm -f prometheus || true'
+                                // 查找任何正在使用 9090 端口的容器并强制删除它
+                                echo 'Force removing any container using port 9090...'
+                                sh 'docker ps -q --filter "publish=9090" | xargs -r docker rm -f || true'
 
-                                echo 'Generating a CI-safe docker-compose file by REMOVING the prometheus volume block...'
+                                echo 'Generating a CI-safe docker-compose file by REMOVING the prometheus service and its volume block...'
                                 // 修正后的 sed 命令：
                                 // 1. 找到以 'prometheus:' 开头的行。
                                 // 2. 匹配到以 'networks:' 开头的行（这是 Prometheus 服务的结束）。
-                                // 3. 在这个范围内，找到以 'volumes:' 开头的行。
-                                // 4. 匹配到包含 'prometheus.yml' 的行（这是 Prometheus 卷的结束）。
-                                // 5. 删除从 'volumes:' 到包含 'prometheus.yml' 的整个块。
-                                // 注意：如果 docker-compose.yml 结构复杂，可能需要更精确的 sed 表达式。
-                                // 这里假设 prometheus 服务的 volumes 块是独立的，并且以 prometheus.yml 结束。
-                                sh "sed '/prometheus:/,/networks:/ { /volumes:/,/prometheus.yml/d }' docker-compose.yml > docker-compose.generated.yml"
-
+                                // 3. 删除从 'prometheus:' 到 'networks:' 的整个块。
+                                // 注意：这里假设 prometheus 服务是 docker-compose.yml 中一个独立的顶级服务定义。
+                                // 如果 prometheus 服务定义在其他服务内部，或者结构更复杂，可能需要更精确的 sed 表达式。
+                                sh "sed '/prometheus:/,/networks:/d' docker-compose.yml > docker-compose.generated.yml"
 
                                 // 打印生成的文件内容，作为最终验证
                                 echo '--- Content of the dynamically generated docker-compose.generated.yml ---'
