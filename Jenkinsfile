@@ -1,9 +1,10 @@
 pipeline {
     agent any
 
-    // ✅ 关键修改 #1: 声明需要使用 Jenkins 全局工具中配置的 docker-compose
+    // ✅ 关键修改: 使用正确的 'dockerCompose' 指令
     tools {
-        org.jenkinsci.plugins.docker.compose.DockerComposeTool 'docker-compose-latest' // 确保这里的名字和你 Jenkins UI 配置的一致
+        // 'docker-compose-latest' 必须与你在 Jenkins -> Manage Jenkins -> Tools 中配置的名称完全一致
+        dockerCompose 'docker-compose-latest' 
     }
 
     environment {
@@ -54,7 +55,7 @@ pipeline {
                 script {
                     try {
                         echo '启动完整的应用环境进行集成测试...'
-                        // 现在这个命令可以在 agent 上被正确找到了
+                        // 此命令现在可以被正确找到并执行
                         sh 'docker-compose up -d'
                         
                         echo '等待服务启动 (等待20秒)...' 
@@ -80,7 +81,8 @@ pipeline {
                     usernameVariable: 'DOCKERHUB_USERNAME'
                 )]) {
                     sh "docker login -u ${DOCKERHUB_USERNAME} -p ${DOCKERHUB_PASSWORD}"
-                    sh "docker build -t ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER} -f backend/Dockerfile ."
+                    // 修正：Dockerfile的上下文路径应该是 'backend' 目录
+                    sh "docker build -t ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER} -f backend/Dockerfile backend"
                     sh "docker tag ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER} ${BACKEND_IMAGE_NAME}:latest"
                     sh "docker push ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER}"
                     sh "docker push ${BACKEND_IMAGE_NAME}:latest"
@@ -99,7 +101,6 @@ pipeline {
     post {
         always {
             echo '收集测试报告...'
-            // ✅ 关键修改 #2: (你已经做对了) 允许没有测试报告文件
             junit allowEmptyResults: true, testResults: 'backend/backend/target/surefire-reports/*.xml'
         }
     }
