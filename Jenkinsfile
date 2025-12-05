@@ -1,5 +1,5 @@
 pipeline {
-    agent none  // 不使用全局 agent
+    agent any
 
     environment {
         DOCKERHUB_USERNAME = 'steampunkgill'
@@ -8,55 +8,57 @@ pipeline {
 
     stages {
         stage('1. Run Unit Tests') {
-            agent {
-                docker {
-                    image 'maven:3.9-eclipse-temurin-17'
-                    args '-v /var/run/docker.sock:/var/run/docker.sock'
-                }
-            }
             steps {
-                dir('backend/backend') {
-                    sh 'mvn test'
-                }
+                echo '运行单元测试...'
+                sh 'docker run --rm -v ${WORKSPACE}/backend:/app -w /app maven:3.9-eclipse-temurin-17 mvn test'
             }
         }
 
         stage('2. Build & Package') {
-            agent {
-                docker {
-                    image 'maven:3.9-eclipse-temurin-17'
-                    args '-v /var/run/docker.sock:/var/run/docker.sock'
-                }
-            }
             steps {
-                dir('backend/backend') {
-                    sh 'mvn clean package -DskipTests'
-                }
+                echo '打包 Spring Boot 应用...'
+                sh 'docker run --rm -v ${WORKSPACE}/backend:/app -w /app maven:3.9-eclipse-temurin-17 mvn package -DskipTests'
             }
         }
 
-        stage('3. Build & Push Docker Image') {
-            agent any
+        stage('3. Integration Tests') {
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'DOCKERHUB_CREDENTIALS') {
-                        dir('backend') {
-                            def app = docker.build("${BACKEND_IMAGE_NAME}:${BUILD_NUMBER}")
-                            app.push()
-                            app.push('latest')
-                        }
+                    try {
+                        echo '启动完整的应用环境进行集成测试...'
+                        sh 'docker-compose up -d'
+                        
+                        echo '等待服务启动 (等待20秒)...' 
+                        sleep(20)
+
+                        echo '执行健康检查...'
+                        sh 'curl -f http://localhost:8080/actuator/health'
+
+                    } finally {
+                        echo '集成测试完成，关闭应用环境...'
+                        sh 'docker-compose down'
                     }
                 }
             }
         }
 
-        stage('4. Cleanup') {
-            agent any
+        stage('4. Build & Push Docker Image') {
             steps {
-                sh """
-                    docker rmi ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER} || true
-                    docker rmi ${BACKEND_IMAGE_NAME}:latest || true
-                """
+                echo "构建并推送 Docker 镜像: ${BACKEND_IMAGE_NAME}"
+                withCredentials([usernamePassword(credentialsId: 'DOCKERHUB_CREDENTIALS', passwordVariable: 'DOCKERHUB_PASSWORD', usernameVariable: 'DOCKERHUB_USERNAME')]) {
+                    sh "docker login -u ${DOCKERHUB_USERNAME} -p ${DOCKERHUB_PASSWORD}"
+                    sh "docker build -t ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER} -f backend/Dockerfile ."
+                    sh "docker tag ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER} ${BACKEND_IMAGE_NAME}:latest"
+                    sh "docker push ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER}"
+                    sh "docker push ${BACKEND_IMAGE_NAME}:latest"
+                }
+            }
+        }
+
+        stage('5. Cleanup') {
+            steps {
+                echo '清理工作...'
+                sh 'docker logout'
             }
         }
     }
@@ -65,15 +67,6 @@ pipeline {
         always {
             echo '收集测试报告...'
             junit 'backend/target/surefire-reports/*.xml'
-            node('') {
-                sh 'docker builder prune -f || true'
-            }
-        }
-        success {
-            echo "✅ 镜像已推送: ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER}"
-        }
-        failure {
-            echo '❌ Pipeline 执行失败'
         }
     }
 }
