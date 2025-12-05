@@ -43,7 +43,7 @@ pipeline {
 
                 stage('3. Run Unit Tests') {
                     agent {
-                        docker { 
+                        docker {
                             image 'maven:3.9-eclipse-temurin-17'
                             reuseNode true
                         }
@@ -57,7 +57,7 @@ pipeline {
 
                 stage('4. Build & Package') {
                     agent {
-                        docker { 
+                        docker {
                             image 'maven:3.9-eclipse-temurin-17'
                             reuseNode true
                         }
@@ -85,7 +85,7 @@ pipeline {
                                 echo '---               Content of docker-compose.yml          ---'
                                 echo '------------------------------------------------------------'
                                 sh 'cat docker-compose.yml'
-                                
+
                                 echo '------------------------------------------------------------'
                                 echo '---             Content of docker-compose.ci.yml         ---'
                                 echo '------------------------------------------------------------'
@@ -96,8 +96,8 @@ pipeline {
                                 echo 'Starting the application environment for integration tests...'
                                 // ✅ 使用新的 compose 命令
                                 sh "${COMPOSE_CMD} up -d"
-                                
-                                echo 'Waiting for services to start (20 seconds)...' 
+
+                                echo 'Waiting for services to start (20 seconds)...'
                                 sleep(20)
 
                                 // ✅ 修复端口为 8081
@@ -106,7 +106,7 @@ pipeline {
 
                             } finally {
                                 echo 'Integration tests finished. Tearing down the environment...'
-                                // ✅ 使用新的 compose 命令
+                                // ✅ 清理时也必须使用同一个 compose 命令
                                 sh "${COMPOSE_CMD} down"
                             }
                         }
@@ -116,8 +116,8 @@ pipeline {
                 stage('6. Build & Push Docker Image') {
                     steps {
                         withCredentials([usernamePassword(
-                            credentialsId: 'DOCKERHUB_CREDENTIALS', 
-                            passwordVariable: 'DOCKERHUB_PASSWORD', 
+                            credentialsId: 'DOCKERHUB_CREDENTIALS',
+                            passwordVariable: 'DOCKERHUB_PASSWORD',
                             usernameVariable: 'DOCKERHUB_USERNAME'
                         )]) {
                             sh "docker login -u ${DOCKERHUB_USERNAME} -p ${DOCKERHUB_PASSWORD}"
