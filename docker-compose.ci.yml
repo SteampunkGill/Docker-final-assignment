@@ -1,3 +1,13 @@
+# docker-compose.ci.yml
+# This file provides a COMPLETE service definition for prometheus,
+# intentionally omitting the 'volumes' key to force a full override.
+
 services:
   prometheus:
-    volumes: []
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - my-app-network
+    # The 'volumes' key is entirely absent from this definition.
