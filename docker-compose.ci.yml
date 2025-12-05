@@ -3,12 +3,14 @@
 
 services:
   prometheus:
-    # We redefine the prometheus service but OMIT the 'volumes' section.
-    # This will make it start with its default internal configuration,
-    # avoiding the host-path mounting problem in the CI environment.
-    image: prom/prometheus
-    container_name: prometheus
-    ports:
-      - "9090:9090"
-    networks:
-      - my-app-network
+    # We redefine the prometheus service but OMIT the 'volumes' section
+    # from the base docker-compose.yml.
+    # When overriding, if a key is not present in the override file,
+    # it means it's either kept from the base file (if not explicitly removed/overridden),
+    # or in the case of lists/maps, it can be replaced or merged.
+    # For 'volumes', providing an empty list explicitly replaces the original list.
+    volumes: []
+    # If there were other properties for prometheus in the base docker-compose.yml
+    # that you wanted to keep (like image, ports, networks), you would NOT
+    # redefine them here unless you wanted to change them.
+    # However, to explicitly remove volumes, an empty list is the way to go.
