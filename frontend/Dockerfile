@@ -18,6 +18,9 @@ RUN npm run build
 # --- 第二阶段：运行阶段 (Nginx) ---
 FROM nginx:alpine AS production-stage
 
+# 安装 curl 以便进行健康检查
+RUN apk add --no-cache curl
+
 # 把第一阶段生成的 dist 文件夹里的东西，拿过来
 COPY --from=build-stage /app/dist /usr/share/nginx/html
 
