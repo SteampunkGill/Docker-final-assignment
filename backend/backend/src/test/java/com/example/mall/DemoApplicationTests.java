@@ -1,4 +1,4 @@
-package com.example.mall;
+package com.example.mall; // <-- 已根据你的错误日志更正为 com.example.mall
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
