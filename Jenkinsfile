@@ -81,9 +81,6 @@ pipeline {
                     }
                 }
 
-                // =====================================================================
-                // STAGE 5: 采用“主动轮询健康检查”的终极方案
-                // =====================================================================
                 stage('5. Integration Tests') {
                     steps {
                         script {
@@ -99,32 +96,32 @@ pipeline {
 
                                 echo 'Starting the application environment using the generated file...'
                                 sh "docker-compose -f docker-compose.generated.yml up -d"
-                                
-                                // ✅ 终极修复: 使用一个健壮的 while 循环来等待服务完全就绪
+
                                 echo 'Waiting for the backend service to become healthy...'
+                                // --- 👇 FIX: 将 [[ ]] 改为 [ ]，以兼容所有 sh 环境 ---
                                 sh '''
                                     set +x
                                     echo "Pinging http://backend:8081/actuator/health ..."
-                                    
+
                                     timeout=90
-                                    while [[ "$(docker run --network=docker-ecommerce-pipeline_my-app-network --rm curlimages/curl -s -o /dev/null -w ''%{http_code}'' http://backend:8081/actuator/health)" != "200" ]]; do
-                                        if [[ $timeout -eq 0 ]]; then
+                                    while [ "$(docker run --network=docker-ecommerce-pipeline_my-app-network --rm curlimages/curl -s -o /dev/null -w ''%{http_code}'' http://backend:8081/actuator/health)" != "200" ]; do
+                                        if [ $timeout -eq 0 ]; then
                                             echo "Timeout: Backend service did not become healthy in 90 seconds."
                                             exit 1
                                         fi
-                                        
+
                                         echo -n "."
                                         sleep 5
                                         timeout=$((timeout - 5))
                                     done
-                                    
+
                                     echo -e "\\nBackend service is healthy!"
                                     set -x
                                 '''
 
                             } finally {
                                 echo 'Tearing down the environment...'
-                                sh "docker-compose -f docker-compose.generated.yml down"
+                                sh "docker-compose -f docker-compose.generated.yml down --remove-orphans || true"
                             }
                         }
                     }
@@ -133,11 +130,14 @@ pipeline {
                 stage('6. Build & Push Docker Image') {
                     steps {
                         withCredentials([usernamePassword(
-                            credentialsId: 'DOCKERHUB_CREDENTIALS', 
-                            passwordVariable: 'DOCKERHUB_PASSWORD', 
+                            credentialsId: 'DOCKERHUB_CREDENTIALS',
+                            passwordVariable: 'DOCKERHUB_PASSWORD',
                             usernameVariable: 'DOCKERHUB_USERNAME'
                         )]) {
-                            sh "docker login -u ${DOCKERHUB_USERNAME} -p ${DOCKERHUB_PASSWORD}"
+                            // --- 👇 FIX: 添加 retry 块，失败后自动重试3次 ---
+                            retry(3) {
+                                sh "docker login -u ${DOCKERHUB_USERNAME} -p ${DOCKERHUB_PASSWORD}"
+                            }
                             sh "docker build -t ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER} -f backend/Dockerfile backend"
                             sh "docker tag ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER} ${BACKEND_IMAGE_NAME}:latest"
                             sh "docker push ${BACKEND_IMAGE_NAME}:${BUILD_NUMBER}"
