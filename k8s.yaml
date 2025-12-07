@@ -1,0 +1,145 @@
+# 1. 数据库服务
+apiVersion: v1
+kind: Service
+metadata:
+  name: database
+spec:
+  ports:
+    - port: 3306
+      targetPort: 3306
+  selector:
+    app: mysql
+---
+# 数据库部署
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deploy
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          # 这里用我们刚才手动打包的镜像
+          image: my-database:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: "root_password"
+            - name: MYSQL_DATABASE
+              value: "simple_mall"
+            - name: MYSQL_USER
+              value: "user"
+            - name: MYSQL_PASSWORD
+              value: "password"
+---
+# 2. 后端服务入口 (蓝绿切换就在这里改！)
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+  ports:
+    - port: 8081
+      targetPort: 8081
+  selector:
+    app: backend
+    version: blue   # <--- 当前指向蓝色版本
+---
+# 蓝队 (V1)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-blue
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+      version: blue
+  template:
+    metadata:
+      labels:
+        app: backend
+        version: blue
+    spec:
+      containers:
+        - name: backend
+          image: my-backend:v1 
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DB_HOST
+              value: "database"
+            - name: DB_PORT
+              value: "3306"
+---
+# 绿队 (V2 - 备用)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-green
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+      version: green
+  template:
+    metadata:
+      labels:
+        app: backend
+        version: green
+    spec:
+      containers:
+        - name: backend
+          image: my-backend:v2
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DB_HOST
+              value: "database"
+            - name: DB_PORT
+              value: "3306"
+---
+# ===========================
+# 3. 前端层 (Nginx) - 缺失部分
+# ===========================
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+spec:
+  type: NodePort # 让外部能访问
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30080 # 浏览器访问 http://localhost:30080
+  selector:
+    app: frontend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-deploy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          # 确保这个镜像是你之前构建的 frontend 镜像名
+          image: docker-final-assignment-frontend:latest 
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
